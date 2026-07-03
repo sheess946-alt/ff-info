@@ -1,9 +1,22 @@
-// api/player.js  —  Vercel Serverless Function
-// Ye function 2 free APIs try karta hai (pehli fail ho to dusri)
-// Vercel pe Node 18+ hai, fetch built-in hai — koi package nahi chahiye
+// api/player.js — Vercel Serverless Function (with diagnostics)
 
 const API1 = "https://freefireinfo-zy9l.onrender.com/api/v1";
 const API2 = "https://free-ff-api-src-5plp.onrender.com/api/v1";
+
+async function tryFetch(url) {
+  try {
+    const r = await fetch(url, {
+      signal: AbortSignal.timeout(50000),
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+    });
+    const text = await r.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch (_) {}
+    return { status: r.status, ok: r.ok, json, preview: text.slice(0, 200) };
+  } catch (e) {
+    return { status: 0, ok: false, json: null, preview: "FETCH ERROR: " + e.message };
+  }
+}
 
 export default async function handler(req, res) {
   const { uid, region } = req.query;
@@ -11,58 +24,62 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "uid aur region dono zaroori hain" });
   }
 
-  let data = null;
-  let source = "";
+  const diag = {};
 
-  // ── TRY API 1 (PRINCE — better response, has clothes/guild in one call) ──
-  try {
-    const r = await fetch(
-      `${API1}/player-profile?uid=${encodeURIComponent(uid)}&server=${encodeURIComponent(region)}`,
-      { signal: AbortSignal.timeout(50000) }
-    );
-    if (r.ok) {
-      data = await r.json();
-      source = "API1";
-    }
-  } catch (_) {}
+  // ── API 1 ──
+  const r1 = await tryFetch(
+    `${API1}/player-profile?uid=${encodeURIComponent(uid)}&server=${encodeURIComponent(region)}`
+  );
+  diag.api1 = { status: r1.status, preview: r1.preview };
 
-  // ── FALLBACK: API 2 (jinix6) ──
-  if (!data) {
-    try {
-      const r = await fetch(
-        `${API2}/account?region=${encodeURIComponent(region)}&uid=${encodeURIComponent(uid)}`,
-        { signal: AbortSignal.timeout(50000) }
-      );
-      if (r.ok) {
-        data = await r.json();
-        source = "API2";
-      }
-    } catch (_) {}
-  }
-
-  if (!data) {
-    return res.status(502).json({
-      error: "Dono APIs se data nahi aa saka. APIs down ho sakti hain ya UID/region galat hai. 1-2 min baad try karo."
+  if (r1.ok && r1.json && (r1.json.basicinfo || r1.json.basicInfo)) {
+    const d = r1.json;
+    const b   = d.basicinfo        || d.basicInfo        || {};
+    const p   = d.profileinfo      || d.profileInfo      || {};
+    const c   = d.clanBasicInfo    || d.claninfo         || {};
+    const cap = d.captainBasicInfo || d.captaininfo      || {};
+    return res.status(200).json({
+      player: {
+        name:   b.nickname  || "N/A",
+        uid:    b.accountid || b.accountId || uid,
+        level:  b.level     || null,
+        likes:  b.liked     ?? b.likes ?? null,
+        region: b.region    || region,
+      },
+      guild: {
+        name:    c.clanName  || c.clanname || "Guild me nahi hai",
+        id:      c.clanId    || c.clanid   || "N/A",
+        level:   c.clanLevel || c.clanlevel || null,
+        members: c.memberNum || c.membernum || null,
+      },
+      leader: {
+        name: cap.nickname  || "N/A",
+        uid:  cap.accountId || cap.accountid || c.captainId || c.captainid || "N/A",
+      },
+      outfitIds: (p.clothes || p.equippedOutfit || []).filter(id => id && id !== 0),
+      _source: "API1",
     });
   }
 
-  // ── PARSE — dono APIs ka structure alag hai, dono handle karo ──
-  let result = {};
+  // ── API 2 ──
+  const r2 = await tryFetch(
+    `${API2}/account?region=${encodeURIComponent(region)}&uid=${encodeURIComponent(uid)}`
+  );
+  diag.api2 = { status: r2.status, preview: r2.preview };
 
-  if (source === "API1") {
-    // Response: { basicinfo: {}, profileinfo: {}, clanBasicInfo: {}, captainBasicInfo: {} }
-    const b   = data.basicinfo        || {};
-    const p   = data.profileinfo      || {};
-    const c   = data.clanBasicInfo    || {};
-    const cap = data.captainBasicInfo || {};
-
-    result = {
+  if (r2.ok && r2.json && (r2.json.basicInfo || r2.json.basicinfo)) {
+    const d = r2.json;
+    const b   = d.basicInfo        || {};
+    const p   = d.profileInfo      || {};
+    const c   = d.clanBasicInfo    || {};
+    const cap = d.captainBasicInfo || {};
+    return res.status(200).json({
       player: {
-        name:   b.nickname   || "N/A",
-        uid:    b.accountid  || uid,
-        level:  b.level      || null,
-        likes:  b.liked      ?? null,
-        region: b.region     || region,
+        name:   b.nickname  || "N/A",
+        uid:    b.accountId || uid,
+        level:  b.level     || null,
+        likes:  b.likes     ?? b.liked ?? null,
+        region: b.region    || region,
       },
       guild: {
         name:    c.clanName  || "Guild me nahi hai",
@@ -72,40 +89,16 @@ export default async function handler(req, res) {
       },
       leader: {
         name: cap.nickname  || "N/A",
-        uid:  cap.accountId || cap.accountid || c.captainId || "N/A",
-      },
-      outfitIds: (p.clothes || []).filter(id => id && id !== 0),
-    };
-
-  } else {
-    // API2 Response: { basicInfo: {}, profileInfo: {}, clanBasicInfo: {}, captainBasicInfo: {} }
-    const b   = data.basicInfo        || data.AccountInfo        || {};
-    const p   = data.profileInfo      || data.AccountProfileInfo || {};
-    const c   = data.clanBasicInfo    || data.GuildInfo          || {};
-    const cap = data.captainBasicInfo || data.leaderInfo         || {};
-
-    result = {
-      player: {
-        name:   b.nickname  || b.username || "N/A",
-        uid:    b.accountId || uid,
-        level:  b.level     || null,
-        likes:  b.likes     ?? b.liked ?? null,
-        region: b.region    || region,
-      },
-      guild: {
-        name:    c.clanName  || c.GuildName || "Guild me nahi hai",
-        id:      c.clanId   || c.Guildid   || c.guildID || "N/A",
-        level:   c.clanLevel || null,
-        members: c.memberNum || null,
-      },
-      leader: {
-        name: cap.nickname  || "N/A",
         uid:  cap.accountId || c.captainId || "N/A",
       },
-      outfitIds: (p.equippedOutfit || p.EquippedOutfit || p.clothes || []).filter(id => id && id !== 0),
-    };
+      outfitIds: (p.equippedOutfit || p.clothes || []).filter(id => id && id !== 0),
+      _source: "API2",
+    });
   }
 
-  result._source = source;
-  res.status(200).json(result);
+  // ── Dono fail — diagnostics wapas bhejo ──
+  return res.status(502).json({
+    error: "Dono APIs fail. Neeche diagnostics dekho:",
+    diagnostics: diag,
+  });
 }
