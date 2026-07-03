@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ur">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Free Fire Info Checker</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><text y='28' font-size='28'>🔥</text></svg>">
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0a0e1a;
+    color: #e8eaf2;
+    min-height: 100vh;
+  }
+  .header {
+    background: linear-gradient(135deg, #ff5722 0%, #ff9800 100%);
+    text-align: center;
+    padding: 28px 16px 22px;
+  }
+  .header h1 { font-size: 24px; color: #fff; }
+  .header p  { font-size: 13px; color: rgba(255,255,255,.8); margin-top: 4px; }
+  .container { max-width: 600px; margin: 0 auto; padding: 20px 16px 40px; }
+  .search-card {
+    background: #141829; border: 1px solid #232845;
+    border-radius: 16px; padding: 20px;
+    margin-top: -20px; position: relative; z-index: 2;
+  }
+  .row { display: flex; gap: 10px; }
+  input, select {
+    padding: 14px; border-radius: 12px; border: 1px solid #232845;
+    background: #0a0e1a; color: #e8eaf2; font-size: 15px; outline: none;
+  }
+  input:focus, select:focus { border-color: #ff5722; }
+  input { flex: 1; }
+  select { min-width: 80px; }
+  .btn {
+    width: 100%; margin-top: 12px; padding: 14px; border-radius: 12px; border: none;
+    background: linear-gradient(135deg, #ff5722, #ff9800);
+    color: #fff; font-size: 16px; font-weight: 700; cursor: pointer;
+  }
+  .btn:hover { opacity: .9; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .result-card {
+    background: #141829; border: 1px solid #232845;
+    border-radius: 16px; padding: 20px; margin-top: 16px;
+  }
+  .section-title {
+    font-size: 14px; font-weight: 700; color: #ff9800;
+    text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between;
+    padding: 10px 0; border-bottom: 1px solid #1c2040;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-label { color: #6b7199; font-size: 13px; }
+  .info-val { font-size: 15px; font-weight: 600; text-align: right; max-width: 60%; word-break: break-all; }
+  .outfit-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 10px; margin-top: 10px;
+  }
+  .outfit-item {
+    background: #0a0e1a; border: 1px solid #232845; border-radius: 12px;
+    padding: 10px; text-align: center; font-size: 11px; color: #6b7199;
+  }
+  .outfit-item img { width: 100%; border-radius: 8px; margin-bottom: 6px; min-height: 60px; background: #141829; }
+  .error-box {
+    background: #1a1020; border: 1px solid #ff5252; border-radius: 16px;
+    padding: 20px; margin-top: 16px; color: #ff8a8a; font-size: 14px; line-height: 1.6;
+  }
+  .loading { text-align: center; padding: 40px; color: #6b7199; }
+  .spinner {
+    width: 36px; height: 36px; border: 3px solid #232845;
+    border-top-color: #ff5722; border-radius: 50%;
+    animation: spin .8s linear infinite; margin: 0 auto 14px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .footer { text-align: center; margin-top: 30px; font-size: 11px; color: #3a3f5c; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🔥 Free Fire Info Checker</h1>
+  <p>UID daalo — Player, Guild, Leader & Outfit info dekho</p>
+</div>
+
+<div class="container">
+  <div class="search-card">
+    <div class="row">
+      <input id="uid" placeholder="Player UID daalo" type="number" />
+      <select id="region">
+        <option value="PK">PK</option>
+        <option value="IND">IND</option>
+        <option value="BD">BD</option>
+        <option value="SG">SG</option>
+        <option value="ID">ID</option>
+        <option value="BR">BR</option>
+        <option value="ME">ME</option>
+        <option value="TW">TW</option>
+        <option value="VN">VN</option>
+        <option value="TH">TH</option>
+        <option value="US">US</option>
+        <option value="RU">RU</option>
+        <option value="CIS">CIS</option>
+      </select>
+    </div>
+    <button class="btn" id="btn">🔍 Fetch Info</button>
+  </div>
+
+  <div id="result"></div>
+  <div class="footer">Not affiliated with Garena. Data from public community APIs.</div>
+</div>
+
+<script>
+const btn = document.getElementById("btn");
+const out = document.getElementById("result");
+
+btn.onclick = async () => {
+  const uid = document.getElementById("uid").value.trim();
+  const region = document.getElementById("region").value;
+  if (!uid) { alert("Pehle UID daalo!"); return; }
+
+  btn.disabled = true;
+  out.innerHTML = `
+    <div class="loading">
+      <div class="spinner"></div>
+      <div>Data fetch ho raha hai...</div>
+      <div style="font-size:12px; color:#4a4f6a; margin-top:8px;">
+        Pehli baar 30-50 sec lag sakte hain (API free tier pe hai)
+      </div>
+    </div>`;
+
+  try {
+    const r = await fetch(`/api/player?uid=${uid}&region=${region}`);
+    const text = await r.text();
+
+    let d;
+    try {
+      d = JSON.parse(text);
+    } catch {
+      throw new Error("Server se JSON nahi aaya. Vercel deploy sahi se hua hai? Console (F12) check karo.");
+    }
+
+    if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
+
+    // Outfit HTML
+    let outfitHTML;
+    if (d.outfitIds && d.outfitIds.length > 0) {
+      outfitHTML = `<div class="outfit-grid">` +
+        d.outfitIds.map(id => `
+          <div class="outfit-item">
+            <img src="https://freefireinfo.vercel.app/icon?id=${id}"
+                 onerror="this.onerror=null; this.style.display='none';" />
+            <div>ID: ${id}</div>
+          </div>`).join("") +
+        `</div>`;
+    } else {
+      outfitHTML = `<div style="color:#6b7199; font-size:13px; margin-top:8px;">
+        Koi equipped outfit data nahi mila
+      </div>`;
+    }
+
+    out.innerHTML = `
+      <div class="result-card">
+        <div class="section-title">👤 Player Info</div>
+        <div class="info-row"><span class="info-label">Name</span><span class="info-val">${d.player.name}</span></div>
+        <div class="info-row"><span class="info-label">UID</span><span class="info-val">${d.player.uid}</span></div>
+        <div class="info-row"><span class="info-label">Level</span><span class="info-val">${d.player.level ?? "?"}</span></div>
+        <div class="info-row"><span class="info-label">Likes</span><span class="info-val">${d.player.likes ?? "?"}</span></div>
+        <div class="info-row"><span class="info-label">Region</span><span class="info-val">${d.player.region}</span></div>
+      </div>
+
+      <div class="result-card">
+        <div class="section-title">🏰 Guild Info</div>
+        <div class="info-row"><span class="info-label">Guild Name</span><span class="info-val">${d.guild.name}</span></div>
+        <div class="info-row"><span class="info-label">Guild ID</span><span class="info-val">${d.guild.id}</span></div>
+        <div class="info-row"><span class="info-label">Guild Level</span><span class="info-val">${d.guild.level ?? "?"}</span></div>
+        <div class="info-row"><span class="info-label">Members</span><span class="info-val">${d.guild.members ?? "?"}</span></div>
+      </div>
+
+      <div class="result-card">
+        <div class="section-title">👑 Guild Leader</div>
+        <div class="info-row"><span class="info-label">Leader Name</span><span class="info-val">${d.leader.name}</span></div>
+        <div class="info-row"><span class="info-label">Leader UID</span><span class="info-val">${d.leader.uid}</span></div>
+      </div>
+
+      <div class="result-card">
+        <div class="section-title">👕 Equipped Outfit</div>
+        ${outfitHTML}
+      </div>
+    `;
+
+  } catch (e) {
+    out.innerHTML = `<div class="error-box">❌ ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+document.getElementById("uid").addEventListener("keydown", e => {
+  if (e.key === "Enter") btn.click();
+});
+</script>
+</body>
+</html>
